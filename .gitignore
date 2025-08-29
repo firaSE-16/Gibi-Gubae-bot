@@ -1,5 +1,14 @@
-./node_modules
-node_modules
+# Node modules
+node_modules/
+
+# Environment files
 .env
+
+# OS files
 .DS_Store
-.idea
+
+# IDE files
+.idea/
+
+# TypeScript build
+dist/
