@@ -10,7 +10,7 @@ dotenv.config();
 
 // Configuration
 const TELEGRAM_API_TOKEN = process.env.TELEGRAM_API_TOKEN;
-const MONGODB_URI = process.env.MONGODB_URI;
+const MONGUGDB_URI = process.env.MONGODB_URI;
 const DB_NAME = 'telegram_bot';
 const PORT = process.env.PORT || 3000;
 
@@ -63,7 +63,7 @@ interface CommonInfo {
 let db: Db;
 
 async function connectToMongo() {
-  const client = new MongoClient(MONGODB_URI!);
+  const client = new MongoClient(MONGUGDB_URI!);
   await client.connect();
   db = client.db(DB_NAME);
   console.log('Connected to MongoDB');
@@ -122,7 +122,12 @@ const userHomeMarkup = createButtons(
 let mode = 0;
 let admins: number[] = [];
 let deleteOptions: string[] = [];
-let questionOptions: { text: string; id: string }[] = [];
+const questionOptionsMap: Map<number, { text: string; id: string }[]> = new Map(); // Per-user question options
+
+// Normalize text for comparison
+function normalizeText(text: string): string {
+  return text.trim().replace(/\s+/g, ' ').normalize('NFC');
+}
 
 // Initialize database and load admins
 async function initialize() {
@@ -151,14 +156,14 @@ bot.command('start', async (ctx) => {
 
 bot.on('text', async (ctx) => {
   const chatId = ctx.chat.id;
-  const text = ctx.message.text.trim(); // Trim input to avoid whitespace issues
+  const text = normalizeText(ctx.message.text);
   const messageId = ctx.message.message_id;
   const username = ctx.from?.username || 'Unknown User';
 
   if (text.includes(backButtonEmoji)) {
     mode = 0;
     deleteOptions = [];
-    questionOptions = [];
+    questionOptionsMap.delete(chatId);
     if (admins.includes(chatId)) {
       await ctx.reply('እንኳን ደህና መጣህ አስተዳዳሪ።', { reply_markup: adminHomeMarkup });
     } else {
@@ -189,17 +194,16 @@ async function handleAdmin(ctx: any, text: string, chatId: number, messageId: nu
     await ctx.reply('አዲስ መረጃ እዚህ ላክ።', { reply_markup: backMarkup });
   } else if (text.includes(answerEmoji)) {
     mode = 2;
-    questionOptions = [];
+    const questionOptions: { text: string; id: string }[] = [];
     const oldQuestions = await oldQuestionsCollection.find().toArray();
     const currentQuestion = await currentQuestionCollection.findOne({});
 
     if (currentQuestion) {
-      questionOptions.push({ text: `Current Question: ${currentQuestion.text} (Current)`, id: currentQuestion.id });
+      questionOptions.push({ text: `ID:${currentQuestion.id}`, id: currentQuestion.id });
       console.log(`Added current question: id=${currentQuestion.id}, text=${currentQuestion.text}`);
     }
     oldQuestions.forEach((q, i) => {
-      const optionText = `Old Question ${i + 1}: ${q.text} (${moment(q.startTime).format('YYYY-MM-DD HH:mm:ss')} - ${q.endTime ? moment(q.endTime).format('YYYY-MM-DD HH:mm:ss') : 'Now'})`;
-      questionOptions.push({ text: optionText, id: q.id });
+      questionOptions.push({ text: `ID:${q.id}`, id: q.id });
       console.log(`Added old question: id=${q.id}, text=${q.text}`);
     });
 
@@ -208,8 +212,13 @@ async function handleAdmin(ctx: any, text: string, chatId: number, messageId: nu
       return;
     }
 
+    questionOptionsMap.set(chatId, questionOptions);
+    const displayButtons = questionOptions.map((q) => {
+      const question = [currentQuestion, ...oldQuestions].find((o) => o.id === q.id);
+      return question ? `${question.text} [${q.text}]` : q.text;
+    });
     await ctx.reply('ለመልሶች የሚፈልጉትን ጥያቄ ይምረጡ:', {
-      reply_markup: createButtons([...questionOptions.map((q) => q.text), `${backButtonEmoji} ተመለስ`], 1),
+      reply_markup: createButtons([...displayButtons, `${backButtonEmoji} ተመለስ`], 1),
     });
   } else if (text.includes(commentEmoji)) {
     mode = 3;
@@ -286,16 +295,25 @@ async function handleAdmin(ctx: any, text: string, chatId: number, messageId: nu
       await commonInfoCollection.insertOne({ text });
       await ctx.reply('አዲሱ መረጃ ተቀምጧል።', { reply_markup: adminHomeMarkup });
     } else if (mode === 2) {
-      console.log(`User selected: ${text}`);
-      console.log(`Available questionOptions: ${JSON.stringify(questionOptions.map(q => ({ text: q.text, id: q.id })))}`);
-      const selectedOption = questionOptions.find((option) => option.text === text);
-      if (selectedOption) {
-        const questionId = selectedOption.id;
-        const questionText = selectedOption.text.split(': ')[1].split(' (')[0];
+      console.log(`Admin selected: "${text}"`);
+      const questionOptions = questionOptionsMap.get(chatId) || [];
+      console.log(`Available questionOptions: ${JSON.stringify(questionOptions)}`);
+      let questionId: string | undefined;
+      
+      // Match by ID: text should be "ID:uuid"
+      if (text.startsWith('ID:')) {
+        questionId = text.replace('ID:', '').trim();
+      }
+
+      const selectedQuestion = questionOptions.find((option) => option.id === questionId);
+      if (selectedQuestion) {
+        const question = (await currentQuestionCollection.findOne({ id: questionId })) || 
+                        (await oldQuestionsCollection.findOne({ id: questionId }));
+        const questionText = question ? question.text : 'Unknown Question';
         console.log(`Fetching answers for questionId: ${questionId}, text: ${questionText}`);
         
         const answers = await answersCollection.find({ questionId: questionId.trim() }).toArray();
-        console.log(`Found ${answers.length} answers: ${JSON.stringify(answers.map(a => ({ questionId: a.questionId, text: a.text })))}`);
+        console.log(`Found ${answers.length} answers: ${JSON.stringify(answers.map(a => ({ questionId: a.questionId, text: a.text, user: a.username })))}`);
 
         if (answers.length === 0) {
           await ctx.reply(`ለጥያቄ "${questionText}" ምንም መልሶች የሉም።`, { reply_markup: backMarkup });
@@ -310,13 +328,13 @@ async function handleAdmin(ctx: any, text: string, chatId: number, messageId: nu
         }
         await ctx.reply(`ለጥያቄ "${questionText}" መልሶች እነዚህ ናቸው።`, { reply_markup: backMarkup });
         mode = 0;
-        questionOptions = [];
+        questionOptionsMap.delete(chatId);
       } else {
-        console.log(`No matching question found for text: ${text}`);
+        console.log(`No matching question found for text: "${text}"`);
         await ctx.reply('እባክዎ ከቀረቡት ጥያቄዎች ውስጥ አንዱን ይምረጡ።', { reply_markup: backMarkup });
       }
     } else if (mode === 7) {
-      const selectedIndex = deleteOptions.findIndex((option) => option === text);
+      const selectedIndex = deleteOptions.findIndex((option) => normalizeText(option) === text);
       if (selectedIndex >= 0) {
         const selectedOption = deleteOptions[selectedIndex];
         if (selectedOption.startsWith('Answer')) {
@@ -397,18 +415,17 @@ async function handleUser(ctx: any, text: string, chatId: number, messageId: num
       await ctx.reply('ከላይ ያሉት ያለፉ ጥያቄዎች ናቸው።', { reply_markup: backMarkup });
     }
   } else if (text.includes(answerEmoji) && text.includes('መልሶችን ለማየት')) {
-    mode = 6; // Changed mode to 6 for viewing answers as a user
-    questionOptions = [];
+    mode = 2;
+    const questionOptions: { text: string; id: string }[] = [];
     const oldQuestions = await oldQuestionsCollection.find().toArray();
     const currentQuestion = await currentQuestionCollection.findOne({});
 
     if (currentQuestion) {
-      questionOptions.push({ text: `Current Question: ${currentQuestion.text} (Current)`, id: currentQuestion.id });
+      questionOptions.push({ text: `ID:${currentQuestion.id}`, id: currentQuestion.id });
       console.log(`Added current question: id=${currentQuestion.id}, text=${currentQuestion.text}`);
     }
     oldQuestions.forEach((q, i) => {
-      const optionText = `Old Question ${i + 1}: ${q.text} (${moment(q.startTime).format('YYYY-MM-DD HH:mm:ss')} - ${q.endTime ? moment(q.endTime).format('YYYY-MM-DD HH:mm:ss') : 'Now'})`;
-      questionOptions.push({ text: optionText, id: q.id });
+      questionOptions.push({ text: `ID:${q.id}`, id: q.id });
       console.log(`Added old question: id=${q.id}, text=${q.text}`);
     });
 
@@ -417,8 +434,13 @@ async function handleUser(ctx: any, text: string, chatId: number, messageId: num
       return;
     }
 
+    questionOptionsMap.set(chatId, questionOptions);
+    const displayButtons = questionOptions.map((q) => {
+      const question = [currentQuestion, ...oldQuestions].find((o) => o!.id === q.id);
+      return question ? `${question.text} [${q.text}]` : q.text;
+    });
     await ctx.reply('ለመልሶች የሚፈልጉትን ጥያቄ ይምረጡ:', {
-      reply_markup: createButtons([...questionOptions.map((q) => q.text), `${backButtonEmoji} ተመለስ`], 1),
+      reply_markup: createButtons([...displayButtons, `${backButtonEmoji} ተመለስ`], 1),
     });
   } else {
     if (mode === 0) {
@@ -440,34 +462,25 @@ async function handleUser(ctx: any, text: string, chatId: number, messageId: num
         await ctx.reply('መልስዎ ተቀምጧል። እናመሰግናለን።', { reply_markup: userHomeMarkup });
       }
     } else if (mode === 2) {
-      await commentsCollection.insertOne({
-        user_id: chatId,
-        username,
-        message_id: messageId,
-        timestamp: moment().toISOString(),
-        text,
-      });
-      await ctx.reply('አስተያየትዎ ተቀምጧል። እናመሰግናለን።', { reply_markup: userHomeMarkup });
-    } else if (mode === 3) {
-      await userQuestionsCollection.insertOne({
-        user_id: chatId,
-        username,
-        message_id: messageId,
-        timestamp: moment().toISOString(),
-        text,
-      });
-      await ctx.reply('ጥያቄዎ ተቀምጧል። እናመሰግናለን።', { reply_markup: userHomeMarkup });
-    } else if (mode === 6) { // Added mode 6 for handling user answer viewing
-      console.log(`User selected: ${text}`);
-      console.log(`Available questionOptions: ${JSON.stringify(questionOptions.map(q => ({ text: q.text, id: q.id })))}`);
-      const selectedOption = questionOptions.find((option) => option.text === text);
-      if (selectedOption) {
-        const questionId = selectedOption.id;
-        const questionText = selectedOption.text.split(': ')[1].split(' (')[0];
+      console.log(`User selected: "${text}"`);
+      const questionOptions = questionOptionsMap.get(chatId) || [];
+      console.log(`Available questionOptions: ${JSON.stringify(questionOptions)}`);
+      let questionId: string | undefined;
+      
+      // Match by ID: text should be "ID:uuid"
+      if (text.startsWith('ID:')) {
+        questionId = text.replace('ID:', '').trim();
+      }
+
+      const selectedQuestion = questionOptions.find((option) => option.id === questionId);
+      if (selectedQuestion) {
+        const question = (await currentQuestionCollection.findOne({ id: questionId })) || 
+                        (await oldQuestionsCollection.findOne({ id: questionId }));
+        const questionText = question ? question.text : 'Unknown Question';
         console.log(`Fetching answers for questionId: ${questionId}, text: ${questionText}`);
         
-        const answers = await answersCollection.find({ questionId: questionId.trim() }).toArray();
-        console.log(`Found ${answers.length} answers: ${JSON.stringify(answers.map(a => ({ questionId: a.questionId, text: a.text })))}`);
+        const answers = await answersCollection.find({ questionId: questionId!.trim() }).toArray();
+        console.log(`Found ${answers.length} answers: ${JSON.stringify(answers.map(a => ({ questionId: a.questionId, text: a.text, user: a.username })))}`);
 
         if (answers.length === 0) {
           await ctx.reply(`ለጥያቄ "${questionText}" ምንም መልሶች የሉም።`, { reply_markup: backMarkup });
@@ -482,11 +495,20 @@ async function handleUser(ctx: any, text: string, chatId: number, messageId: num
         }
         await ctx.reply(`ለጥያቄ "${questionText}" መልሶች እነዚህ ናቸው።`, { reply_markup: backMarkup });
         mode = 0;
-        questionOptions = [];
+        questionOptionsMap.delete(chatId);
       } else {
-        console.log(`No matching question found for text: ${text}`);
-        await ctx.reply('እባክዎ ከቀረቡት ጥያቄዎች ውስጥ አንዱን ይምረጡ።', { reply_markup: backMarkup });
+        console.log(`No matching question found for text: "${text}"`);
+        await ctx.reply('እባክዋቸው ከቀረቡት ጥያቄዎች ውስጥ አንዱን ይምረጡ።', { reply_markup: backMarkup });
       }
+    } else if (mode === 3) {
+      await userQuestionsCollection.insertOne({
+        user_id: chatId,
+        username,
+        message_id: messageId,
+        timestamp: moment().toISOString(),
+        text,
+      });
+      await ctx.reply('ጥያቄዎ ተቀምጧል። እናመሰግናለን።', { reply_markup: userHomeMarkup });
     }
   }
 }
