@@ -35,7 +35,7 @@ interface Answer {
   user_id: number;
   username?: string;
   message_id: number;
-  question: string;
+  questionId: string; // Changed from question to questionId
   timestamp: string;
   text: string;
 }
@@ -122,7 +122,7 @@ const userHomeMarkup = createButtons(
 let mode = 0;
 let admins: number[] = [];
 let deleteOptions: string[] = [];
-let questionOptions: string[] = [];
+let questionOptions: { text: string; id: string }[] = []; // Store both text and id
 
 // Initialize database and load admins
 async function initialize() {
@@ -194,19 +194,20 @@ async function handleAdmin(ctx: any, text: string, chatId: number, messageId: nu
     const currentQuestion = await currentQuestionCollection.findOne({});
 
     if (currentQuestion) {
-      questionOptions.push(`Current Question: ${currentQuestion.text} (Current)`);
+      questionOptions.push({ text: `Current Question: ${currentQuestion.text} (Current)`, id: currentQuestion.id });
     }
-    questionOptions.push(...oldQuestions.map((q, i) => 
-      `Old Question ${i + 1}: ${q.text} (${moment(q.startTime).format('YYYY-MM-DD HH:mm:ss')} - ${q.endTime ? moment(q.endTime).format('YYYY-MM-DD HH:mm:ss') : 'Now'})`
-    ));
+    questionOptions.push(...oldQuestions.map((q, i) => ({
+      text: `Old Question ${i + 1}: ${q.text} (${moment(q.startTime).format('YYYY-MM-DD HH:mm:ss')} - ${q.endTime ? moment(q.endTime).format('YYYY-MM-DD HH:mm:ss') : 'Now'})`,
+      id: q.id,
+    })));
 
     if (questionOptions.length === 0) {
       await ctx.reply('ምንም ጥያቄዎች የሉም።', { reply_markup: backMarkup });
       return;
     }
 
-    await ctx.reply('ለመልሶች የሚፈልጉትን ጥያቄ ይምረጡ:', { 
-      reply_markup: createButtons([...questionOptions, `${backButtonEmoji} ተመለስ`], 1) 
+    await ctx.reply('ለመልሶች የሚፈልጉትን ጥያቄ ይምረጡ:', {
+      reply_markup: createButtons([...questionOptions.map((q) => q.text), `${backButtonEmoji} ተመለስ`], 1),
     });
   } else if (text.includes(commentEmoji)) {
     mode = 3;
@@ -235,7 +236,7 @@ async function handleAdmin(ctx: any, text: string, chatId: number, messageId: nu
         `ጥያቄ: ${question.text}\nተጠቃሚ: ${question.username || 'Unknown'}\nጊዜ: ${moment(question.timestamp).format('YYYY-MM-DD HH:mm:ss')}`
       );
     }
-    await ctx.reply('እነዚህ ከተጠቃሚዎች የተላለፉ ጥያቄዎች ነበሩ።', { reply_markup: backMarkup });
+    await ctx.reply('እነዚህ ከተጠቃሚዎች የተላለፉ ጥ�iyaቄዎች ነበሩ።', { reply_markup: backMarkup });
   } else if (text.includes(deleteEmoji)) {
     mode = 7;
     deleteOptions = [];
@@ -281,14 +282,15 @@ async function handleAdmin(ctx: any, text: string, chatId: number, messageId: nu
       await commonInfoCollection.insertOne({ text });
       await ctx.reply('አዲሱ መረጃ ተቀምጧል።', { reply_markup: adminHomeMarkup });
     } else if (mode === 2) {
-      const selectedIndex = questionOptions.findIndex((option) => option === text);
+      const selectedIndex = questionOptions.findIndex((option) => option.text === text);
       if (selectedIndex >= 0) {
         const selectedQuestion = questionOptions[selectedIndex];
-        const questionText = selectedQuestion.split(': ')[1].split(' (')[0];
-        console.log(`Fetching answers for question: ${questionText}`); // Debug log
-        const answers = await answersCollection.find({ question: questionText }).toArray();
+        const questionId = selectedQuestion.id;
+        const questionText = selectedQuestion.text.split(': ')[1].split(' (')[0];
+        console.log(`Fetching answers for questionId: ${questionId}, text: ${questionText}`); // Debug log
+        const answers = await answersCollection.find({ questionId }).toArray();
         console.log(`Found ${answers.length} answers`); // Debug log
-        
+
         if (answers.length === 0) {
           await ctx.reply(`ለጥያቄ "${questionText}" ምንም መልሶች የሉም።`, { reply_markup: backMarkup });
           return;
@@ -374,14 +376,14 @@ async function handleUser(ctx: any, text: string, chatId: number, messageId: num
       await ctx.reply(`የአሁኑ ጥያቄ: \n ${currentQuestion.text}`, { reply_markup: backMarkup });
       await ctx.reply('መልስዎን እዚህ ይላኩ።', { reply_markup: backMarkup });
     }
-  } else if (text.includes('ያለፉ ጥያቄዎች')) {
+  } else if (text.includes('ያለፉ ጥ�iyaቄዎች')) {
     mode = 0;
     const oldQuestions = await oldQuestionsCollection.find().toArray();
     if (!oldQuestions.length) {
-      await ctx.reply('ምንም ያለፉ ጥያቄዎች የሉም።', { reply_markup: backMarkup });
+      await ctx.reply('ምንም ያለፉ ጥ�iyaቄዎች የሉም።', { reply_markup: backMarkup });
     } else {
       for (const question of oldQuestions) {
-        await ctx.reply(`ጥያቄ: ${question.text}\nጊዜ: ${moment(question.startTime).format('YYYY-MM-DD HH:mm:ss')} - ${question.endTime ? moment(question.endTime).format('YYYY-MM-DD HH:mm:ss') : 'Now'}`);
+        await ctx.reply(`ጥ�iyaቄ: ${question.text}\nጊዜ: ${moment(question.startTime).format('YYYY-MM-DD HH:mm:ss')} - ${question.endTime ? moment(question.endTime).format('YYYY-MM-DD HH:mm:ss') : 'Now'}`);
       }
       await ctx.reply('ከላይ ያሉት ያለፉ ጥ�iyaቄዎች ናቸው።', { reply_markup: backMarkup });
     }
@@ -392,23 +394,24 @@ async function handleUser(ctx: any, text: string, chatId: number, messageId: num
     const currentQuestion = await currentQuestionCollection.findOne({});
 
     if (currentQuestion) {
-      questionOptions.push(`Current Question: ${currentQuestion.text} (Current)`);
+      questionOptions.push({ text: `Current Question: ${currentQuestion.text} (Current)`, id: currentQuestion.id });
     }
-    questionOptions.push(...oldQuestions.map((q, i) => 
-      `Old Question ${i + 1}: ${q.text} (${moment(q.startTime).format('YYYY-MM-DD HH:mm:ss')} - ${q.endTime ? moment(q.endTime).format('YYYY-MM-DD HH:mm:ss') : 'Now'})`
-    ));
+    questionOptions.push(...oldQuestions.map((q, i) => ({
+      text: `Old Question ${i + 1}: ${q.text} (${moment(q.startTime).format('YYYY-MM-DD HH:mm:ss')} - ${q.endTime ? moment(q.endTime).format('YYYY-MM-DD HH:mm:ss') : 'Now'})`,
+      id: q.id,
+    })));
 
     if (questionOptions.length === 0) {
-      await ctx.reply('ምንም ጥያቄዎች የሉም።', { reply_markup: backMarkup });
+      await ctx.reply('ምንም ጥ�iyaቄዎች የሉም።', { reply_markup: backMarkup });
       return;
     }
 
-    await ctx.reply('ለመልሶች የሚፈልጉትን ጥያቄ ይምረጡ:', { 
-      reply_markup: createButtons([...questionOptions, `${backButtonEmoji} ተመለስ`], 1) 
+    await ctx.reply('ለመልሶች የሚፈልጉትን ጥ�iyaቄ ይምረጡ:', {
+      reply_markup: createButtons([...questionOptions.map((q) => q.text), `${backButtonEmoji} ተመለስ`], 1),
     });
   } else {
     if (mode === 0) {
-      await ctx.reply('እንኳን ወደ ፭ ኪሎ ግቢ ጉባኤ ጥያቄና መልስ መወዳደሪያ ቦት መጡ ።', {
+      await ctx.reply('እንኳን ወደ ፭ ኪሎ ግቢ ጉባኤ ጥ�iyaቄና መልስ መወዳደሪያ ቦት መጡ ።', {
         reply_markup: userHomeMarkup,
       });
     } else if (mode === 1) {
@@ -418,23 +421,24 @@ async function handleUser(ctx: any, text: string, chatId: number, messageId: num
           user_id: chatId,
           username,
           message_id: messageId,
-          question: currentQuestion.text,
+          questionId: currentQuestion.id, // Store question ID instead of text
           timestamp: moment().toISOString(),
           text,
         });
         await ctx.reply('መልስዎ ተቀምጧል። እናመሰግናለን።', { reply_markup: userHomeMarkup });
       }
     } else if (mode === 2) {
-      const selectedIndex = questionOptions.findIndex((option) => option === text);
+      const selectedIndex = questionOptions.findIndex((option) => option.text === text);
       if (selectedIndex >= 0) {
         const selectedQuestion = questionOptions[selectedIndex];
-        const questionText = selectedQuestion.split(': ')[1].split(' (')[0];
-        console.log(`Fetching answers for question: ${questionText}`); // Debug log
-        const answers = await answersCollection.find({ question: questionText }).toArray();
+        const questionId = selectedQuestion.id;
+        const questionText = selectedQuestion.text.split(': ')[1].split(' (')[0];
+        console.log(`Fetching answers for questionId: ${questionId}, text: ${questionText}`); // Debug log
+        const answers = await answersCollection.find({ questionId }).toArray();
         console.log(`Found ${answers.length} answers`); // Debug log
-        
+
         if (answers.length === 0) {
-          await ctx.reply(`ለጥያቄ "${questionText}" ምንም መልሶች የሉም።`, { reply_markup: backMarkup });
+          await ctx.reply(`ለጥ�iyaቄ "${questionText}" ምንም መልሶች የሉም።`, { reply_markup: backMarkup });
           return;
         }
 
@@ -444,7 +448,7 @@ async function handleUser(ctx: any, text: string, chatId: number, messageId: num
             `መልስ: ${answer.text}\nተጠቃሚ: ${answer.username || 'Unknown'}\nጊዜ: ${moment(answer.timestamp).format('YYYY-MM-DD HH:mm:ss')}`
           );
         }
-        await ctx.reply(`ለጥያቄ "${questionText}" መልሶች እነዚህ ናቸው።`, { reply_markup: backMarkup });
+        await ctx.reply(`ለጥ�iyaቄ "${questionText}" መልሶች እነዚህ ናቸው።`, { reply_markup: backMarkup });
         mode = 0;
         questionOptions = [];
       }
@@ -456,7 +460,7 @@ async function handleUser(ctx: any, text: string, chatId: number, messageId: num
         timestamp: moment().toISOString(),
         text,
       });
-      await ctx.reply('ጥያቄዎ ተቀምጧል። እናመሰግናለን።', { reply_markup: userHomeMarkup });
+      await ctx.reply('ጥ�iyaቄዎ ተቀምጧል። እናመሰግናለን።', { reply_markup: userHomeMarkup });
     }
   }
 }
