@@ -20,7 +20,6 @@ const answerEmoji = '✍️';
 const commentEmoji = '📖';
 const questionEmoji = '❓';
 const infoEmoji = 'ℹ️';
-const adminEmoji = '👨🏽‍💻';
 const backButtonEmoji = '◀️';
 const deleteEmoji = '🗑️';
 
@@ -28,8 +27,8 @@ const deleteEmoji = '🗑️';
 interface Question {
   id: string;
   text: string;
-  startTime: string; // When question was added
-  endTime?: string; // When question was replaced or moved to old
+  startTime: string;
+  endTime?: string;
 }
 
 interface Answer {
@@ -79,25 +78,14 @@ app.use(bot.webhookCallback('/webhook'));
 // Button creation utility
 function createButtons(elements: string[], width: number) {
   const buttons: KeyboardButton[][] = [];
-  if (width > 1 && width <= 3 && elements.length > 3) {
-    while (elements.length % 3 !== 0) {
-      elements.push('');
-    }
-    if (width === 2) {
-      for (let i = 0; i < elements.length; i += 2) {
-        buttons.push([Markup.button.text(elements[i]), Markup.button.text(elements[i + 1])]);
-      }
-    } else if (width === 3) {
-      for (let i = 0; i < elements.length; i += 3) {
-        buttons.push([
-          Markup.button.text(elements[i]),
-          Markup.button.text(elements[i + 1]),
-          Markup.button.text(elements[i + 2]),
-        ]);
-      }
+  const validElements = elements.filter((el) => el && el.trim() !== ''); // Remove empty or invalid elements
+  if (width > 1 && width <= 3 && validElements.length > 3) {
+    for (let i = 0; i < validElements.length; i += width) {
+      const row = validElements.slice(i, i + width).map((el) => Markup.button.text(el));
+      buttons.push(row);
     }
   } else {
-    for (const element of elements) {
+    for (const element of validElements) {
       buttons.push([Markup.button.text(element)]);
     }
   }
@@ -113,7 +101,6 @@ const adminHomeMarkup = createButtons(
     `${commentEmoji} አስተያየቶችን ለማየት`,
     `${questionEmoji} የተጠየቁ ጥያቄዎችን ለማየት`,
     `${infoEmoji} መረጃ ለመጨመር`,
-    `${adminEmoji} የተጠቃሚ ዝርዝር`,
     `${deleteEmoji} ጥያቄ/መልስ ሰርዝ`,
   ],
   3
@@ -249,17 +236,6 @@ async function handleAdmin(ctx: any, text: string, chatId: number, messageId: nu
       );
     }
     await ctx.reply('እነዚህ ከተጠቃሚዎች የተላለፉ ጥያቄዎች ነበሩ።', { reply_markup: backMarkup });
-  } else if (text.includes(adminEmoji)) {
-    mode = 6;
-    const answers = await answersCollection.find().toArray();
-    if (answers.length === 0) {
-      await ctx.reply('ምንም መልሶች የሉም።', { reply_markup: backMarkup });
-      return;
-    }
-    const userList = answers
-      .map((a) => `ተጠቃሚ: ${a.username || 'Unknown'}\nመልስ: ${a.text}\nጊዜ: ${moment(a.timestamp).format('YYYY-MM-DD HH:mm:ss')}`)
-      .sort((a, b) => a.split('ጊዜ: ')[1].localeCompare(b.split('ጊዜ: ')[1]));
-    await ctx.reply(userList.length ? userList.join('\n\n') : 'ምንም ተጠቃሚ የለም።', { reply_markup: backMarkup });
   } else if (text.includes(deleteEmoji)) {
     mode = 7;
     deleteOptions = [];
@@ -278,7 +254,7 @@ async function handleAdmin(ctx: any, text: string, chatId: number, messageId: nu
     ));
 
     if (deleteOptions.length === 0) {
-      await ctx.reply('ለመሰረዝ ምንም ጥያቄዎች ወይም መልሶች የሉም።', { reply_markup: backMarkup });
+      await ctx.reply('ለመሰረዝ ምንም ጥ�iyaቄዎች ወይም መልሶች የሉም።', { reply_markup: backMarkup });
       return;
     }
 
@@ -309,7 +285,9 @@ async function handleAdmin(ctx: any, text: string, chatId: number, messageId: nu
       if (selectedIndex >= 0) {
         const selectedQuestion = questionOptions[selectedIndex];
         const questionText = selectedQuestion.split(': ')[1].split(' (')[0];
+        console.log(`Fetching answers for question: ${questionText}`); // Debug log
         const answers = await answersCollection.find({ question: questionText }).toArray();
+        console.log(`Found ${answers.length} answers`); // Debug log
         
         if (answers.length === 0) {
           await ctx.reply(`ለጥያቄ "${questionText}" ምንም መልሶች የሉም።`, { reply_markup: backMarkup });
@@ -385,7 +363,7 @@ async function handleUser(ctx: any, text: string, chatId: number, messageId: num
       for (const info of infos) {
         await ctx.reply(info.text);
       }
-      await ctx.reply('ከአስተማሪዎች የተላለፈው ወቅታዊ መረጃ እነዚህ ናቸው።', { reply_markup: backMarkup });
+      await ctx.reply('ከአስተዳዳሪዎች የተላለፈው ወቅታዊ መረጃ እነዚህ ናቸው።', { reply_markup: backMarkup });
     }
   } else if (text.includes('የአሁኑ ጥያቄ')) {
     mode = 1;
@@ -405,7 +383,7 @@ async function handleUser(ctx: any, text: string, chatId: number, messageId: num
       for (const question of oldQuestions) {
         await ctx.reply(`ጥያቄ: ${question.text}\nጊዜ: ${moment(question.startTime).format('YYYY-MM-DD HH:mm:ss')} - ${question.endTime ? moment(question.endTime).format('YYYY-MM-DD HH:mm:ss') : 'Now'}`);
       }
-      await ctx.reply('ከላይ ያሉት ያለፉ ጥያቄዎች ናቸው።', { reply_markup: backMarkup });
+      await ctx.reply('ከላይ ያሉት ያለፉ ጥ�iyaቄዎች ናቸው።', { reply_markup: backMarkup });
     }
   } else if (text.includes(answerEmoji) && text.includes('መልሶችን ለማየት')) {
     mode = 2;
@@ -451,7 +429,9 @@ async function handleUser(ctx: any, text: string, chatId: number, messageId: num
       if (selectedIndex >= 0) {
         const selectedQuestion = questionOptions[selectedIndex];
         const questionText = selectedQuestion.split(': ')[1].split(' (')[0];
+        console.log(`Fetching answers for question: ${questionText}`); // Debug log
         const answers = await answersCollection.find({ question: questionText }).toArray();
+        console.log(`Found ${answers.length} answers`); // Debug log
         
         if (answers.length === 0) {
           await ctx.reply(`ለጥያቄ "${questionText}" ምንም መልሶች የሉም።`, { reply_markup: backMarkup });
