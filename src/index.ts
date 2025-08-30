@@ -214,7 +214,7 @@ async function handleAdmin(ctx: any, text: string, chatId: number, messageId: nu
 
     questionOptionsMap.set(chatId, questionOptions);
     const displayButtons = questionOptions.map((q) => {
-      const question = [currentQuestion, ...oldQuestions].find((o) => o.id === q.id);
+      const question = [currentQuestion, ...oldQuestions].find((o) => o!.id === q.id);
       return question ? `${question.text} [${q.text}]` : q.text;
     });
     await ctx.reply('ለመልሶች የሚፈልጉትን ጥያቄ ይምረጡ:', {
@@ -312,7 +312,7 @@ async function handleAdmin(ctx: any, text: string, chatId: number, messageId: nu
         const questionText = question ? question.text : 'Unknown Question';
         console.log(`Fetching answers for questionId: ${questionId}, text: ${questionText}`);
         
-        const answers = await answersCollection.find({ questionId: questionId.trim() }).toArray();
+        const answers = await answersCollection.find({ questionId: questionId!.trim() }).toArray();
         console.log(`Found ${answers.length} answers: ${JSON.stringify(answers.map(a => ({ questionId: a.questionId, text: a.text, user: a.username })))}`);
 
         if (answers.length === 0) {
