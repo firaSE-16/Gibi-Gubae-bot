@@ -493,7 +493,7 @@ app.get('/', (req: Request, res: Response) => {
 async function start() {
   await initialize();
   // Set webhook for Render deployment
-  await bot.telegram.setWebhook('https://gibi-gubae-bot.onrender.com/webhook');
+  await bot.telegram.setWebhook('https://api.telegram.org/bot6169329044:AAGsYblOlSJ3L1DZXrJvmBWyGO1-vkWORFI/setWebhook?url=https://gibi-gubae-bot.onrender.com/%3Cyour-path%3E');
   bot.launch();
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
