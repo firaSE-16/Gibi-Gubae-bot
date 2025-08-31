@@ -253,49 +253,34 @@ async function handleAdmin(ctx: any, text: string, chatId: number, messageId: nu
     await ctx.reply('እነዚህ ከተጠቃሚዎች የተላለፉ ጥያቄዎች ነበሩ።', { reply_markup: backMarkup });
   } else if (text.includes(deleteEmoji)) {
     mode = 7;
-    deleteOptions = [];
-    const answers = await answersCollection.find().toArray();
-    const userQuestions = await userQuestionsCollection.find().toArray();
+    const questionOptions: { text: string; id: string }[] = [];
+    const answerOptions: { text: string; id: string }[] = [];
     const oldQuestions = await oldQuestionsCollection.find().toArray();
     const currentQuestion = await currentQuestionCollection.findOne({});
-    deleteOptions.push(...answers.map((a, i) => {
-      const name = a.first_name ? 
-        (a.last_name ? `${a.first_name} ${a.last_name}` : a.first_name) : 
-        (a.username || 'Unknown');
-      return {
-        text: `Answer ${i + 1}: ${a.text} (by ${name}, ${moment(a.timestamp).format('YYYY-MM-DD HH:mm:ss')})`,
-        id: `answer_${a.message_id}`
-      };
-    }));
-    deleteOptions.push(...userQuestions.map((q, i) => {
-      const name = q.first_name ? 
-        (q.last_name ? `${q.first_name} ${q.last_name}` : q.first_name) : 
-        (q.username || 'Unknown');
-      return {
-        text: `Question ${i + 1}: ${q.text} (by ${name}, ${moment(q.timestamp).format('YYYY-MM-DD HH:mm:ss')})`,
-        id: `question_${q.message_id}`
-      };
-    }));
+    const answers = await answersCollection.find().toArray();
+    const userQuestions = await userQuestionsCollection.find().toArray();
+
     if (currentQuestion) {
-      deleteOptions.push({ text: `Current Question: ${currentQuestion.text}`, id: `current_${currentQuestion.id}` });
+      questionOptions.push({ text: `current_${currentQuestion.id}`, id: `current_${currentQuestion.id}` });
     }
-    deleteOptions.push(...oldQuestions.map((q, i) => ({
-      text: `Old Question ${i + 1}: ${q.text} (${moment(q.startTime).format('YYYY-MM-DD HH:mm:ss')} - ${q.endTime ? moment(q.endTime).format('YYYY-MM-DD HH:mm:ss') : 'Now'})`,
-      id: `old_${q.id}`
-    })));
+    oldQuestions.forEach((q) => {
+      questionOptions.push({ text: `old_${q.id}`, id: `old_${q.id}` });
+    });
+    answers.forEach((a) => {
+      answerOptions.push({ text: `answer_${a.message_id}`, id: `answer_${a.message_id}` });
+    });
+    userQuestions.forEach((q) => {
+      questionOptions.push({ text: `question_${q.message_id}`, id: `question_${q.message_id}` });
+    });
+
+    deleteOptions = [...questionOptions, ...answerOptions];
     if (deleteOptions.length === 0) {
-      await ctx.reply('ለመሰረዝ ምንም ጥያቄዎች ወይም መልሶች የሉም።', { reply_markup: backMarkup });
+      await ctx.reply('ምንም ጥያቄዎች ወይም መልሶች የሉም።', { reply_markup: backMarkup });
       return;
     }
-await ctx.reply("ለመሰረዝ ይምረጡ:", {
-  reply_markup: createButtons(
-    [
-      ...deleteOptions,
-      { text: `${backButtonEmoji} ተመለስ`, id: "back" }
-    ],
-    1
-  ),
-});
+    await ctx.reply('ለመሰረዝ የሚፈልጉትን መለያ (ID) ይምረጡ:', {
+      reply_markup: createButtons([...deleteOptions, { text: `${backButtonEmoji} ተመለስ`, id: 'back' }], 1),
+    });
   } else if (text.includes(stopEmoji)) {
     const currentQuestion = await currentQuestionCollection.findOne({});
     if (currentQuestion) {
@@ -346,10 +331,10 @@ await ctx.reply("ለመሰረዝ ይምረጡ:", {
         }
         for (const answer of answers) {
           await bot.telegram.forwardMessage(
-  chatId,        // chat to forward to
-  answer.chatId,        // from which chat
-  answer.message_id      // which message
-);
+            chatId,
+            answer.chatId,
+            answer.message_id
+          );
           const name = answer.first_name ? 
             (answer.last_name ? `${answer.first_name} ${answer.last_name}` : answer.first_name) : 
             (answer.username || 'Unknown');
@@ -363,7 +348,7 @@ await ctx.reply("ለመሰረዝ ይምረጡ:", {
         await ctx.reply('እባክዎ ትክክለኛ ጥያቄ መለያ (ID) ይምረጡ።', { reply_markup: backMarkup });
       }
     } else if (mode === 7) {
-      const selectedOption = deleteOptions.find((option) => normalizeText(option.text) === normalizeText(text));
+      const selectedOption = deleteOptions.find((option) => option.text === text);
       if (selectedOption) {
         if (selectedOption.id.startsWith('answer_')) {
           const messageId = parseInt(selectedOption.id.split('_')[1]);
@@ -372,7 +357,8 @@ await ctx.reply("ለመሰረዝ ይምረጡ:", {
           const messageId = parseInt(selectedOption.id.split('_')[1]);
           await userQuestionsCollection.deleteOne({ message_id: messageId });
         } else if (selectedOption.id.startsWith('current_')) {
-          await currentQuestionCollection.deleteOne({});
+          const questionId = selectedOption.id.split('_')[1];
+          await currentQuestionCollection.deleteOne({ id: questionId });
         } else if (selectedOption.id.startsWith('old_')) {
           const questionId = selectedOption.id.split('_')[1];
           await oldQuestionsCollection.deleteOne({ id: questionId });
@@ -407,7 +393,7 @@ async function handleUser(ctx: any, text: string, chatId: number, messageId: num
     await ctx.reply('አስተያየትዎን እዚህ ይላኩ።', { reply_markup: backMarkup });
   } else if (text.includes(questionEmoji) && text.includes('ጥያቄ ለመጠየቅ')) {
     mode = 3;
-    await ctx.reply('ጥያቄዎን እዚህ ይላኩ።', { reply_markup: backMarkup });
+    await ctx.reply('ጥ�iyaቄዎን እዚህ ይላኩ።', { reply_markup: backMarkup });
   } else if (text.includes(infoEmoji)) {
     mode = 4;
     const infos = await commonInfoCollection.find().toArray();
