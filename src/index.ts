@@ -483,7 +483,7 @@ async function start() {
 
   // ✅ Set Telegram webhook to your server endpoint
   const webhookUrl = `https://gibi-gubae-bot.onrender.com${webhookPath}`;
-  await bot.telegram.setWebhook(webhookUrl);
+  await bot.telegram.setWebhook('https://api.telegram.org/bot6169329044:AAGsYblOlSJ3L1DZXrJvmBWyGO1-vkWORFI/setWebhook?url=https://gibi-gubae-bot.onrender.com/%3Cyour-path%3E');
 
   // ✅ Handle incoming updates at that path
   app.use(webhookPath, bot.webhookCallback(webhookPath));
