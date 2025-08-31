@@ -78,7 +78,6 @@ async function connectToMongo() {
 const app = express();
 const bot = new Telegraf(TELEGRAM_API_TOKEN!);
 app.use(express.json());
-app.use(bot.webhookCallback('/webhook'));
 
 // Button creation utility
 function createButtons(elements: { text: string; id: string }[], width: number) {
@@ -479,16 +478,21 @@ app.get('/', (req: Request, res: Response) => {
 async function start() {
   await initialize();
 
-  // Set your bot webhook to your server endpoint
-  const webhookUrl = `https://gibi-gubae-bot.onrender.com/webhook/${process.env.TELEGRAM_API_TOKEN}`;
+  // ✅ Define your webhook path
+  const webhookPath = `/webhook/${TELEGRAM_API_TOKEN}`;
+
+  // ✅ Set Telegram webhook to your server endpoint
+  const webhookUrl = `https://gibi-gubae-bot.onrender.com${webhookPath}`;
   await bot.telegram.setWebhook(webhookUrl);
 
-  // Handle incoming updates on your webhook endpoint
-  app.use(bot.webhookCallback(`/webhook/${process.env.BOT_TOKEN}`));
+  // ✅ Handle incoming updates at that path
+  app.use(webhookPath, bot.webhookCallback(webhookPath));
 
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    console.log(`Webhook set to ${webhookUrl}`);
   });
 }
+
 
 start().catch(console.error);
